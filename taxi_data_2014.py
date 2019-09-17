@@ -1,0 +1,90 @@
+#!/usr/bin/env python
+# coding: utf-8
+# In[4]:
+import pandas as pd
+from matplotlib import pyplot as plt
+import numpy as np
+import json
+import math
+
+def create_graph(map_data):
+    ''''given a list of map data, this function returns a dictionary mapping
+        from intersections (coordinates (long,lat)) to other intersections.
+        '''
+    loc_to_stname = {}  # maps coord to street name
+    graph = {}          # maps st name to other st's
+    street_names = set()  # to check how many distinct street names we have
+    st_name_obj = {}    # maps street name to json object
+    # first we map intersections to streets that intersect at those coords
+    for entry in map_data:
+        street_name = entry['properties']['st_label']
+        street_names.add(street_name)
+        intersections = entry['geometry']['coordinates'][0]
+        st_name_obj[street_name] = entry
+        for intersection in intersections:
+            # intersection = [round(elt, 6) for elt in intersection]
+            loc_to_stname[tuple(intersection)] = loc_to_stname.get(tuple(intersection), set()).union({street_name})
+    print(len(loc_to_stname))
+    freq = {} # used for debugging (maps k:v where k is number of streets with same coord and v is number of occurrences
+    ht = {} # maps k to list of intersections of k streets
+
+    for k,v in loc_to_stname.items():
+        freq[len(v)] = freq.get(len(v), 0) + 1
+        ht[len(v)] = ht.get(len(v), []) + [k]
+    # we have a lot of intersections that found no pair. These are typically intersections that lead to
+    # allys and such. lets get rid of them.
+    for k in ht[1]:
+        loc_to_stname.pop(k)
+
+    for entry in map_data:
+        street_name = entry['properties']['st_label']
+        intersections = entry['geometry']['coordinates'][0]
+        for intersection in intersections:
+            # intersection = [round(elt, 5) for elt in intersection]
+            graph[street_name] = graph.get(street_name, set()).union(loc_to_stname.get(tuple(intersection), set()))
+        graph[street_name].discard(street_name)
+
+    return graph, st_name_obj
+
+
+
+
+url = 'https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2014-01.csv'
+fn = 'yellow_tripdata_2014-01.csv'
+map_fn = 'NYC Street Centerline (CSCL).geojson'
+with open(map_fn) as f:
+    map_data = json.load(f)
+
+locations = map_data['features']
+
+# manhattan_data = [elt for elt in locations if elt['properties']['borocode'] == '1']
+
+manhattan_data = [elt for elt in locations if
+                  elt['properties']['borocode'] == '1' and
+                  elt['properties']['rw_type'] in {str(elt) for elt in [1,2,3,4]} and
+                  elt['properties']['trafdir'] in {'FT', 'TW', 'TF'}]
+
+print(len(manhattan_data))
+# we create a mapping from coordinates to streets that are at that coordinate
+graph, street_to_obj = create_graph(manhattan_data)
+for street, maps in graph.items():
+    print(street, maps)
+print(street_to_obj['CLEVELAND PL'])
+#
+# taxi_data = pd.read_pickle('taxi_data_2014.pkl')
+#
+# taxi_data[" pickup_datetime"] = pd.to_datetime(taxi_data[" pickup_datetime"], infer_datetime_format=True)
+#
+# # we should sort the taxi data by date, as we likely need this for our time estimation algorithm
+# taxi_data = taxi_data.sort_values(" pickup_datetime")
+#
+# # lets do 10% of traffic in January 10, from 5AM-10PM, for example
+# date1 = '2014-01-10 08:00:00'
+# date2 = '2014-01-10 23:00:00'
+# small_data = taxi_data[(taxi_data[' pickup_datetime'] > date1) & (taxi_data[' pickup_datetime'] <= date2)]
+# small_data = small_data[:len(small_data)//10]
+#
+#
+
+
+
